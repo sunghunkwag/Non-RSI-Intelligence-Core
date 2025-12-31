@@ -1,25 +1,27 @@
-# Non-RSI Intelligence Core
+# Non-RSI Simulation Core
 
-Implementation of the "Path B x Path C" architecture hypothesis for system-level self-improvement without source code modification.
+A single-file Python simulation demonstrating system-level performance acceleration without source code modification.
 
-## Core Concepts
+## Structure
 
-### Path B: The Fixed-Architecture Node
-Represents an individual agent with a static Python codebase. It consists of:
-*   **World Model**: Learns transition probabilities and reward expectations.
-*   **Planner**: Executes lookahead search over the world model.
-*   **Skill Engine**: Interprets data-level tool sequences (DSL) that can be synthesized at runtime.
-*   **Evolution**: Occurs via parameter updates and state accumulation, not source rewriting.
+The simulation implements two primary classes to model the "Fixed Agent x Collective System" interaction:
 
-### Path C: The Collective System
-Represents the multi-agent orchestration layer. It manages:
-*   **Shared Knowledge Base**: Stores episodic memory, verified principles, and artifacts.
-*   **Project Graph**: Tracks long-horizon goals and dependencies.
-*   **Resource Allocation**: Dynamically assigns compute budgets and agent roles based on performance variance.
-*   **Evolution**: Occurs via organizational policy adaptation and infrastructure growth.
+### Component B: Agent Class (Fixed Architecture)
+Instances of the `Agent` class that process observations using static logic:
+*   **World Model**: A hash-based state transition tracker (learns P(s'|s,a)).
+*   **Planner**: A fixed-depth lookahead searcher using the world model.
+*   **Skill Interpreter**: Executes data-driven tool sequences (DSL) stored in memory.
+*   **Update Mechanism**: Updates internal weight parameters and state history; **no code modification**.
 
-## Mechanism
-The system runs a simulation where 'B-type' agents generate tools and knowledge artifacts. The 'C-type' system integrates these outputs to optimize the collective policy, enabling the solution of progressively harder tasks through data-driven feedback loops rather than code modification.
+### Component C: Orchestrator Class (Collective System)
+The `Orchestrator` class that manages the main loop and shared state:
+*   **Shared Memory**: A dictionary-based store for artifacts and episodic logs.
+*   **Project Graph**: A directed graph structure to track dependency chains.
+*   **Scheduler**: Assigns `Agent` instances to `ProjectNode` items based on heuristic policy.
+*   **Adaptation**: Adjusts global simulation parameters (e.g., risk tolerance) based on output variance.
+
+## Simulation Logic
+The script runs a loop where `Agent` objects interact with a synthetic `ResearchEnvironment`. The environment returns reward signals which are aggregated by the `Orchestrator` to update the global policy and shared memory context, demonstrating accumulation of performance without changing the Python source file.
 
 ## Usage
 `python NON_RSI_AGI_CORE_v2.py --rounds 40 --agents 8`
