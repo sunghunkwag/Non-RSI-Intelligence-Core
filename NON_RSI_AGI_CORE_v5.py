@@ -1,5 +1,5 @@
 """
-NON_RSI_AGI_CORE_v2.py
+NON_RSI_AGI_CORE_v5.py
 ======================
 
 Architecture goal:
@@ -14,8 +14,14 @@ Architecture goal:
   - project graph + org policy adaptation
   NOT via modifying this file.
 
+v5 Upgrade:
+- "Real" Neuro-Symbolic Core using Hyperdimensional Computing (HDC).
+- Strict Majority Rule for bundling (no OR hacks).
+- Adaptive Planning robustness.
+- Enhanced associative memory.
+
 Run:
-  python NON_RSI_AGI_CORE_v2.py --rounds 40 --agents 8
+  python NON_RSI_AGI_CORE_v5.py --rounds 40 --agents 8
 """
 
 from __future__ import annotations
@@ -60,7 +66,104 @@ def tokenize(text: str) -> List[str]:
 
 
 # ----------------------------
-# Shared Memory / Knowledge Base
+# Hyperdimensional Computing (HDC) Core
+# ----------------------------
+
+class HyperVector:
+    """
+    Pure Python Hyperdimensional Vector implementation (10,000 bits).
+    Uses strict Majority Rule for bundling.
+    """
+    DIM = 10000
+
+    def __init__(self, val: Optional[int] = None) -> None:
+        if val is None:
+            self.val = random.getrandbits(self.DIM)
+        else:
+            self.val = val
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, HyperVector):
+            return NotImplemented
+        return self.val == other.val
+
+    def __hash__(self) -> int:
+        return hash(self.val)
+
+    @classmethod
+    def from_seed(cls, seed_obj: Any) -> HyperVector:
+        """Deterministic generation from a seed object."""
+        # Create a deterministic seed from the object string
+        s = str(seed_obj)
+        h_hex = hashlib.sha256(s.encode("utf-8")).hexdigest()
+        h_int = int(h_hex, 16)
+        rng = random.Random(h_int)
+        return cls(rng.getrandbits(cls.DIM))
+
+    @classmethod
+    def zero(cls) -> HyperVector:
+        return cls(0)
+
+    def bind(self, other: HyperVector) -> HyperVector:
+        """XOR binding operation."""
+        return HyperVector(self.val ^ other.val)
+
+    def permute(self, shifts: int = 1) -> HyperVector:
+        """Cyclic shift."""
+        shifts %= self.DIM
+        if shifts == 0:
+            return self
+        mask = (1 << self.DIM) - 1
+        new_val = ((self.val << shifts) & mask) | (self.val >> (self.DIM - shifts))
+        return HyperVector(new_val)
+
+    def similarity(self, other: HyperVector) -> float:
+        """Hamming similarity (normalized 0.0 to 1.0)."""
+        diff = self.val ^ other.val
+        dist = diff.bit_count()
+        return 1.0 - (dist / self.DIM)
+
+    @staticmethod
+    def bundle(vectors: List[HyperVector]) -> HyperVector:
+        """
+        Majority Rule bundling.
+        Sum bits column-wise. Threshold at N/2.
+        Optimized for pure Python using string manipulation.
+        """
+        if not vectors:
+            return HyperVector.zero()
+
+        n = len(vectors)
+        if n == 1:
+            return vectors[0]
+
+        threshold = n / 2.0
+        counts = [0] * HyperVector.DIM
+
+        # Optimization: String iteration is faster than bitwise loops in Python
+        for vec in vectors:
+            # bin(val) -> '0b101...', slice [2:], zfill to DIM
+            # Reverse so index 0 corresponds to LSB
+            s = bin(vec.val)[2:].zfill(HyperVector.DIM)[::-1]
+            for i, char in enumerate(s):
+                if char == '1':
+                    counts[i] += 1
+
+        result_val = 0
+        for i in range(HyperVector.DIM):
+            c = counts[i]
+            if c > threshold:
+                result_val |= (1 << i)
+            elif c == threshold:
+                # Random tie-breaking
+                if random.random() < 0.5:
+                    result_val |= (1 << i)
+
+        return HyperVector(result_val)
+
+
+# ----------------------------
+# Shared Memory / Knowledge Base (Neuro-Symbolic)
 # ----------------------------
 
 @dataclass
@@ -80,18 +183,50 @@ class MemoryItem:
 
 class SharedMemory:
     """
-    Shared KB across all agents and orchestrator.
-    - Episodic: concrete runs, rewards, env stats
-    - Principles: distilled rules, patterns, strategies
-    - Artifacts: tools, designs, verified modules
-    v4: Added knowledge graph for associative memory
+    Shared KB using HDC for associative retrieval.
     """
 
     def __init__(self, max_items: int = 8000) -> None:
         self.max_items = max_items
         self._items: List[MemoryItem] = []
-        # v4: Track tag co-occurrence for associative retrieval
-        self.tag_cooccurrence: Dict[str, Dict[str, int]] = {}
+        # HDC Memory Index
+        self._item_vectors: Dict[str, HyperVector] = {}
+        # Cache common vectors to speed up encoding
+        self._token_cache: Dict[str, HyperVector] = {}
+
+    def _get_token_hv(self, token: str) -> HyperVector:
+        if token not in self._token_cache:
+            self._token_cache[token] = HyperVector.from_seed(f"token:{token}")
+        return self._token_cache[token]
+
+    def _encode_text_bag(self, text: str) -> HyperVector:
+        tokens = tokenize(text)
+        if not tokens:
+            return HyperVector.zero()
+        vecs = [self._get_token_hv(t) for t in tokens]
+        return HyperVector.bundle(vecs)
+
+    def _encode_item(self, item: MemoryItem) -> HyperVector:
+        # Bundle: Title, Kind, Tags
+        # Structure: Bind(Role, Value)
+
+        # 1. Kind
+        kind_hv = self._get_token_hv(f"kind:{item.kind}")
+
+        # 2. Title
+        title_hv = self._encode_text_bag(item.title)
+
+        # 3. Tags
+        if item.tags:
+            tag_vecs = [self._get_token_hv(f"tag:{t}") for t in item.tags]
+            tags_hv = HyperVector.bundle(tag_vecs)
+        else:
+            tags_hv = HyperVector.zero()
+
+        # Bundle all components
+        # Note: We don't bind to roles here to allow freer association,
+        # or we could bind. Let's keep it simple: bundle of properties.
+        return HyperVector.bundle([kind_hv, title_hv, tags_hv])
 
     def add(self, kind: str, title: str, content: Dict[str, Any],
             tags: Optional[List[str]] = None) -> str:
@@ -100,60 +235,79 @@ class SharedMemory:
                           content=content, tags=tags)
         self._items.append(item)
         
-        # v4: Update tag co-occurrence graph
-        for i, tag_a in enumerate(tags):
-            if tag_a not in self.tag_cooccurrence:
-                self.tag_cooccurrence[tag_a] = {}
-            for tag_b in tags[i+1:]:
-                self.tag_cooccurrence[tag_a][tag_b] = self.tag_cooccurrence[tag_a].get(tag_b, 0) + 1
-                if tag_b not in self.tag_cooccurrence:
-                    self.tag_cooccurrence[tag_b] = {}
-                self.tag_cooccurrence[tag_b][tag_a] = self.tag_cooccurrence[tag_b].get(tag_a, 0) + 1
+        # Generate and store HV
+        item_hv = self._encode_item(item)
+        self._item_vectors[item.id] = item_hv
         
         if len(self._items) > self.max_items:
-            self._items = self._items[-self.max_items:]
-        return item.id
+            removed = self._items.pop(0)
+            self._item_vectors.pop(removed.id, None)
 
-    def _score_item(self, item: MemoryItem, qtok: set, t_now: int) -> float:
-        txt = item.title + " " + json.dumps(item.content, ensure_ascii=False, default=str)
-        itok = set(tokenize(txt))
-        overlap = len(qtok.intersection(itok))
-        if overlap == 0:
-            return 0.0
-        recency = 1.0 / (1.0 + (t_now - item.ts_ms) / (1000.0 * 60.0 * 30.0))
-        reward = float(item.content.get("reward", 0.0)) if isinstance(item.content, dict) else 0.0
-        reward_boost = max(0.0, min(0.5, reward))
-        return overlap + 0.35 * recency + reward_boost
+        return item.id
 
     def search(self, query: str, k: int = 10,
                kinds: Optional[List[str]] = None,
                tags: Optional[List[str]] = None) -> List[MemoryItem]:
-        qtok = set(tokenize(query))
         
-        # v4: Expand query using associative memory
+        # 1. Encode Query
+        query_parts = []
+        
+        # Text query
+        if query:
+            query_parts.append(self._encode_text_bag(query))
+
+        # Tags query
         if tags:
-            expanded_tags = set(tags)
-            for tag in tags:
-                if tag in self.tag_cooccurrence:
-                    # Add strongly associated tags
-                    for related_tag, count in self.tag_cooccurrence[tag].items():
-                        if count >= 3:  # Association threshold
-                            expanded_tags.add(related_tag)
-            tags = list(expanded_tags)
-        
-        if not qtok:
+            tag_vecs = [self._get_token_hv(f"tag:{t}") for t in tags]
+            query_parts.append(HyperVector.bundle(tag_vecs))
+
+        # Kinds (act as filter, but also can be part of query vector)
+        if kinds:
+             # We typically don't bundle all kinds, we use kinds as a hard filter.
+             pass
+
+        if not query_parts:
             return self._items[-k:]
 
+        query_hv = HyperVector.bundle(query_parts)
+
+        # 2. Score all items
         t_now = now_ms()
         scored: List[Tuple[float, MemoryItem]] = []
+
+        # Optimization: Pre-filter by kind to reduce HDC checks?
+        # Or just check all. 8000 checks is fine.
+
         for it in self._items:
             if kinds is not None and it.kind not in kinds:
                 continue
-            if tags is not None and not any(t in it.tags for t in tags):
+
+            # HDC Similarity
+            it_vec = self._item_vectors.get(it.id)
+            if not it_vec:
                 continue
-            score = self._score_item(it, qtok, t_now)
-            if score > 0:
-                scored.append((score, it))
+
+            sim = query_hv.similarity(it_vec)
+
+            # Recency & Reward boost
+            recency = 1.0 / (1.0 + (t_now - it.ts_ms) / (1000.0 * 60.0 * 30.0))
+            reward = float(it.content.get("reward", 0.0)) if isinstance(it.content, dict) else 0.0
+            reward_boost = max(0.0, min(0.5, reward))
+
+            # Composite Score
+            # HDC similarity for random vectors is ~0.5.
+            # We are interested in deviations above 0.5.
+            if sim < 0.48:
+                continue # Irrelevant
+
+            # Normalize sim to 0..1 range roughly (0.5 -> 0, 1.0 -> 1)
+            norm_sim = max(0.0, (sim - 0.5) * 2.0)
+
+            final_score = norm_sim + 0.35 * recency + reward_boost
+
+            if final_score > 0.1:
+                scored.append((final_score, it))
+
         scored.sort(key=lambda x: x[0], reverse=True)
         return [it for _, it in scored[:k]]
 
@@ -510,6 +664,10 @@ class Planner:
 
     def propose(self, obs: Dict[str, Any], action_space: List[str],
                 risk_pref: float) -> List[PlanCandidate]:
+        # Robustness: Safety check
+        if not action_space:
+            return []
+
         beam: List[PlanCandidate] = [PlanCandidate(actions=[], score=0.0)]
 
         for d in range(self.depth):
@@ -521,8 +679,14 @@ class Planner:
                     adjusted = q - (1.0 - risk_pref) * uncertainty
                     sc = cand.score + (self.gamma ** d) * adjusted
                     new_beam.append(PlanCandidate(actions=cand.actions + [a], score=sc))
+
+            # Robustness: Sort and Prune
+            if not new_beam:
+                break
+
             new_beam.sort(key=lambda c: c.score, reverse=True)
             beam = new_beam[: self.width]
+
         return beam
 
 
@@ -763,14 +927,20 @@ class Agent:
     def choose_action(self, obs: Dict[str, Any]) -> str:
         # v5: Adaptive planning depth based on task difficulty
         difficulty = int(obs.get('difficulty', 3))
-        adaptive_depth = min(5, max(2, difficulty))  # 2-5 based on difficulty
-        adaptive_width = min(8, max(4, 4 + difficulty // 2))  # 4-8
+
+        # Robustness: Bound adaptive parameters
+        adaptive_depth = min(10, max(2, difficulty))
+        adaptive_width = min(12, max(4, 4 + difficulty // 2))
         
         # Recreate planner with adaptive parameters
         self.planner = Planner(self.wm, depth=adaptive_depth, width=adaptive_width)
         
         # System 1: Fast heuristic planning
-        candidates = self.planner.propose(obs, self.action_space(), self.cfg.risk)
+        try:
+            candidates = self.planner.propose(obs, self.action_space(), self.cfg.risk)
+        except Exception:
+            candidates = []
+
         if not candidates:
             return random.choice(self.action_space())
         
@@ -794,9 +964,9 @@ class Agent:
             if mem.content.get("action") == draft_action:
                 reward = float(mem.content.get("reward", 0.0))
                 total_reward += reward
-                if reward >= 0.25:  # Success threshold (lowered from 0.3)
+                if reward >= 0.25:  # Success threshold
                     success_count += 1
-                elif reward < 0.10:  # Failure threshold (lowered from 0.15)
+                elif reward < 0.10:  # Failure threshold
                     failure_count += 1
         
         # v4: Probabilistic risk assessment instead of hard override
@@ -1266,7 +1436,7 @@ def main() -> None:
     tools.register("evaluate_candidate", tool_evaluate_candidate)
     tools.register("tool_build_report", tool_tool_build_report)
 
-    print("=== NON-RSI AGI CORE v2: RUN START ===")
+    print("=== NON-RSI AGI CORE v5 (Neuro-Symbolic): RUN START ===")
     for r in range(args.rounds):
         out = orch.run_round(r)
         top = sorted(out["results"], key=lambda x: x["reward"], reverse=True)[:3]
